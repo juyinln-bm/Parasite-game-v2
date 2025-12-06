@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>寄生蟲跑台翻卡練習</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+
+        h2 { color: #333; margin-bottom: 20px; }
+
+        /* 卡片容器 */
+        .scene {
+            width: 300px;
+            height: 450px;
+            perspective: 600px; /* 3D 透視感 */
+        }
+
+        /* 卡片本體 */
+        .card {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            border-radius: 15px;
+        }
+
+        /* 翻轉觸發 */
+        .card.is-flipped {
+            transform: rotateY(180deg);
+        }
+
+        /* 卡片正反面通用設定 */
+        .card__face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden; /* 背面不可見 */
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        /* 卡片正面 (題目) */
+        .card__face--front {
+            background: #ffffff;
+        }
+
+        /* 卡片背面 (答案) */
+        .card__face--back {
+            background: #f8f9fa;
+            transform: rotateY(180deg); /* 預先轉 180 度 */
+            text-align: center;
+        }
+
+        /* 圖片樣式 */
+        .parasite-img {
+            max-width: 100%;
+            max-height: 200px;
+            object-fit: contain;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+
+        /* 輸入框與按鈕 */
+        input[type="text"] {
+            padding: 10px;
+            width: 80%;
+            margin-bottom: 10px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+
+        button:hover { background-color: #0056b3; }
+
+        .result-text {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        .correct { color: #28a745; }
+        .wrong { color: #dc3545; }
+        
+        .answer-detail {
+            font-size: 18px;
+            color: #555;
+            margin-bottom: 20px;
+        }
+
+        .progress {
+            margin-top: 20px;
+            font-size: 14px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🔬 寄生蟲跑台練習</h2>
+
+    <div class="scene">
+        <div class="card" id="flashcard">
+            <div class="card__face card__face--front">
+                <div style="margin-bottom:10px; color:#666;">請輸入正確名稱：</div>
+                <img src="" alt="寄生蟲圖片" class="parasite-img" id="q-image">
+                <input type="text" id="user-input" placeholder="例如：寄生蟲1" autocomplete="off">
+                <button onclick="checkAnswer()">送出對答案</button>
+            </div>
+
+            <div class="card__face card__face--back">
+                <div id="result-title" class="result-text"></div>
+                <div class="answer-detail">
+                    正確答案是：<br>
+                    <strong id="correct-answer" style="color: #333; font-size: 22px;"></strong>
+                </div>
+                <button onclick="nextQuestion()" id="next-btn">下一題 ➡️</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="progress" id="progress-text">準備開始...</div>
+
+    <script>
+        // 1. 設定題庫 (根據您的要求)
+        // 圖片路徑假設為 images/1.jpg, images/2.jpg...
+        const database = [
+            { id: 1, img: "images/1.jpg", ans: "寄生蟲1" },
+            { id: 2, img: "images/2.jpg", ans: "寄生蟲2" },
+            { id: 3, img: "images/3.jpg", ans: "寄生蟲3" }
+        ];
+
+        let questions = [];
+        let currentIdx = 0;
+        let score = 0;
+
+        const card = document.getElementById('flashcard');
+        const imgEl = document.getElementById('q-image');
+        const inputEl = document.getElementById('user-input');
+        const resultTitle = document.getElementById('result-title');
+        const correctAnswerEl = document.getElementById('correct-answer');
+        const nextBtn = document.getElementById('next-btn');
+        const progressEl = document.getElementById('progress-text');
+
+        // 洗牌函數 (讓題目隨機)
+        function shuffle(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // 初始化遊戲
+        function initGame() {
+            // 複製一份題庫並洗牌
+            questions = shuffle([...database]);
+            currentIdx = 0;
+            score = 0;
+            loadCard();
+        }
+
+        // 載入當前卡片內容
+        function loadCard() {
+            const q = questions[currentIdx];
+            imgEl.src = q.img;
+            
+            // 處理圖片載入失敗的情況 (方便除錯)
+            imgEl.onerror = function() {
+                this.alt = "找不到圖片：" + q.img;
+            };
+
+            inputEl.value = ""; // 清空輸入框
+            progressEl.innerText = `進度：${currentIdx + 1} / ${questions.length}`;
+            
+            // 確保卡片是轉回正面的
+            card.classList.remove('is-flipped');
+            
+            // 聚焦輸入框
+            setTimeout(() => inputEl.focus(), 300); // 延遲一點以免翻轉動畫未結束
+        }
+
+        // 檢查答案 (翻轉到背面)
+        function checkAnswer() {
+            const userAns = inputEl.value.trim();
+            const correctAns = questions[currentIdx].ans;
+
+            if (userAns === correctAns) {
+                resultTitle.innerHTML = "✅ 答對了！";
+                resultTitle.className = "result-text correct";
+                score++;
+            } else {
+                resultTitle.innerHTML = "❌ 答錯了！";
+                resultTitle.className = "result-text wrong";
+            }
+
+            correctAnswerEl.innerText = correctAns;
+            
+            // 翻轉卡片
+            card.classList.add('is-flipped');
+
+            // 設定按鈕文字 (如果是最後一題)
+            if (currentIdx >= questions.length - 1) {
+                nextBtn.innerText = "看成績 🏁";
+            } else {
+                nextBtn.innerText = "下一題 ➡️";
+            }
+            
+            nextBtn.focus();
+        }
+
+        // 下一題
+        function nextQuestion() {
+            currentIdx++;
+            
+            if (currentIdx < questions.length) {
+                // 還有題目，翻回正面並載入新題
+                card.classList.remove('is-flipped');
+                
+                // 等待翻轉動畫過一半再換內容，才不會露餡
+                setTimeout(() => {
+                    loadCard();
+                }, 300);
+            } else {
+                // 全部跑完
+                alert(`練習結束！\n你答對了 ${score} 題 (共 ${questions.length} 題)。\n按確定重新開始。`);
+                initGame();
+            }
+        }
+
+        // 支援按 Enter 送出
+        inputEl.addEventListener("keypress", function(event) {
+            if (event.key === "Enter") {
+                checkAnswer();
+            }
+        });
+
+        // 啟動！
+        initGame();
+
+    </script>
+</body>
+</html>
